@@ -402,11 +402,13 @@ an `int` is the size of 4 `char`s; consequently `sizeof bit` returns the same.
     9      return 0;
     10 }
 
-Answer: 1?
+Answer: 1? Maybe 7?
 
 Explanation: The include is superfluous? I don't know. This program runs fine
-on my computer. The pointer is dereferenced before assignment, so that seems
-okay.
+on my computer. At line 7, the pointer is dereferenced while there is an
+uninitialized value where it's pointing --- you're not using that value for
+anything in this case, but it is ~~bad practice~~ technically undefined
+according to C11 6.5.3.2.
 
 
 ## 17. In which line is the BUG in the following program?
