@@ -1,5 +1,10 @@
-test: main.c
-	gcc main.c -o main -Wall -Wextra -ggdb
+.PHONY = all submission clean
+CC     = gcc
+CFLAGS = -Wall -Wextra -ggdb
+SRC    = main.c chat.c
+
+all: $(SRC)
+	$(CC) $(CFLAGS) $^ -o main
 
 run: main
 	./main
@@ -10,4 +15,4 @@ submission: martimn.md
 	tar -zcvf martimn.tgz martimn
 
 clean:
-	rm -fr martimn martimn.tgz main
+	rm -fr *.o main
