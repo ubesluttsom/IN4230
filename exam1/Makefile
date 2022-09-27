@@ -1,13 +1,14 @@
 .PHONY = all submission clean
 CC     = gcc
 CFLAGS = -Wall -Wextra -ggdb
-SRC    = main.c chat.c
 
-all: $(SRC)
-	$(CC) $(CFLAGS) $^ -o main
+all: ping_client ping_server
 
-run: main
-	./main
+ping_client: ping_client.c ping.h
+	$(CC) $(CFLAGS) $^ -o ping_client
+
+ping_server: ping_server.c ping.h
+	$(CC) $(CFLAGS) $^ -o ping_server
 
 submission: martimn.md
 	mkdir -p martimn

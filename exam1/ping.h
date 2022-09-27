@@ -1,5 +1,5 @@
 /*
- * File: chat.h
+ * File: ping.h
  *
  * Good practises for C header files.
  * 1. ALWAYS #include guards!
@@ -20,8 +20,8 @@
  * from being included multiple times.
  */
 
-#ifndef _CHAT_H
-#define _CHAT_H
+#ifndef _PING_H
+#define _PING_H
 
 /* MACROs */
 #define SOCKET_NAME "server.socket"
@@ -35,7 +35,7 @@
  * return_type function_name(parameter1, parameter2, ...);
  */
 
-void server(void);
-void client(void);
+void server(char* socket_name);
+void client(char* socket_name, char* buf);
 
-#endif /* _CHAT_H */
+#endif /* _PING_H */
