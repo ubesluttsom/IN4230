@@ -97,9 +97,14 @@ static void handle_client(int fd)
 	 * of the memory area pointed to by 'buf' with the constant byte 0.*/
 	memset(buf, 0, sizeof(buf));
 
-	/* read() attempts to read up to 'sizeof(buf)' bytes from file
-	 * descriptor fd into the buffer starting at buf. */
-	rc = read(fd, buf, sizeof(buf));
+  // Peek at the message in the file descriptor.
+	rc = recv(fd, buf, sizeof(buf), MSG_PEEK);
+
+  // If the message is a PING, read it for real.
+  if (strncmp(buf, "PING:", 5) == 0) {
+    rc = recv(fd, buf, sizeof(buf), 0);
+  }
+
 	if (rc <= 0) {
 		close(fd);
 		return;

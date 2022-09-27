@@ -12,6 +12,7 @@ void client(char* buf, char* socket_name)
 {
   struct sockaddr_un addr;
   int    sd, rc;
+  char ping_str[256] = "PING:";
 
   sd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
   if (sd < 0) {
@@ -31,19 +32,24 @@ void client(char* buf, char* socket_name)
     exit(EXIT_FAILURE);
   }
 
-  printf("\n*** Sending ping ... ***\n");
 
-  rc = write(sd, buf, strlen(buf));
+  // Modify buffer, preppening "PING:".
+  strncat(ping_str, buf, 256 - 5);
+
+  printf("\n*** Sending ping ... ***\n");
+  rc = write(sd, ping_str, strlen(buf) + 5);
   if (rc < 0) {
     perror("write");
     close(sd);
     exit(EXIT_FAILURE);
   }
+  
+  close(sd);
 }
 
 void print_usage(char* cmd)
 {
-    printf("usage: %s [-h] <destination_host> <message> <socket_lower>", cmd);
+    printf("usage: %s [-h] <destination_host> <message> <socket_lower>\n", cmd);
 }
 
 int main (int argc, char *argv[])
