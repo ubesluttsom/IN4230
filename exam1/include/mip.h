@@ -1,5 +1,5 @@
 /*
- * File: ping.h
+ * File: mip.h
  *
  * Good practises for C header files.
  * 1. ALWAYS #include guards!
@@ -20,22 +20,38 @@
  * from being included multiple times.
  */
 
-#ifndef _PING_H
-#define _PING_H
+#ifndef _MIP_H
+#define _MIP_H
+
+#include <stdint.h>   /* uint8_t, uint16_t, uint32_t */
+#include <linux/if_packet.h>   /* AF_PACKET, struct sockaddr_ll */
 
 /* MACROs */
-#define SOCKET_NAME "server.socket"
-#define MAX_CONNS 5	// max. length of the pending connections queue
-#define MAX_EVENTS 10	// max. number of concurrent events to check
 
-/*
- * We declare the signature of a function in the header file
- * and its definition in the source file.
- *
- * return_type function_name(parameter1, parameter2, ...);
- */
+// Protocol
+#define ETH_P_MIP 0x88B5
 
-void server(char* socket_name);
-void client(char* socket_name, char* buf);
+// MIP types
+#define MIP_T_ARP   0x01
+#define MIP_T_PING  0x02
 
-#endif /* _PING_H */
+#define MIP_BROADCAST 0xFF
+
+// TODO: Add stuff.
+
+// MIP Header
+
+struct mip_hdr {
+  uint8_t  dst_addr : 8;
+  uint8_t  src_addr : 8;
+  uint16_t ttl      : 4,
+           sdu_len  : 9,
+           sdu_type : 3;
+};
+
+struct mip_msg {
+  struct mip_hdr hdr;
+  uint32_t       sdu[];
+};
+
+#endif /* _MIP_H */

@@ -1,14 +1,30 @@
-.PHONY = all submission clean
+.PHONY = all submission clean indent
 CC     = gcc
-CFLAGS = -Wall -Wextra -ggdb
+CFLAGS = -I include -Wall -Wextra -Wpedantic -ggdb
 
-all: ping_client ping_server
+src = $(wildcard src/*.c)
+#obj = $(patsubst src/%.c, build/%.o, $(src))
+hdr = $(wildcard include/*.h)
 
-ping_client: ping_client.c ping.h
+mip_daemon: build/mip_daemon.o build/mip_arp.o build/common.o
+	$(CC) $(CFLAGS) $^ -o mip_daemon
+
+ping_client: build/ping_client.o build/common.o
 	$(CC) $(CFLAGS) $^ -o ping_client
 
-ping_server: ping_server.c ping.h
+ping_server: build/ping_server.o build/common.o
 	$(CC) $(CFLAGS) $^ -o ping_server
+
+build/%.o: src/%.c ${hdr}
+	$(CC) $(CFLAGS) -c $< -o $@
+
+all: ping_client ping_server mip_daemon
+
+install:
+	mkdir -p bin && mv -u mip_daemon ping_client ping_server sender bin/
+
+indent: $(src)
+	indent --linux-style --no-tabs --format-all-comments $^
 
 submission: martimn.md
 	mkdir -p martimn
@@ -16,4 +32,4 @@ submission: martimn.md
 	tar -zcvf martimn.tgz martimn
 
 clean:
-	rm -fr *.o main
+	rm -fr build/*.o bin
