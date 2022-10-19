@@ -20,13 +20,13 @@ int recv_ping(int sd, struct ping *ping, uint8_t type)
 
         return -1;
 
-recv:
+ recv:
         /* https://xkcd.com/292/ */
         if ((rc = (recv(sd, ping, sizeof(struct ping), 0))) < 0)
                 goto recv_error;
         return rc;
 
-recv_error:
+ recv_error:
         perror("recv_ping");
         return rc;
 }
@@ -37,18 +37,17 @@ int send_ping(int unix_sock, struct ping *ping)
 
         if (unix_sock < 0)
                 /* If the unix socket, for whatever reason, is not initialized.
-                 * Perhaps there is no connected application above? */
+                   Perhaps there is no connected application above? */
                 return SOCK_NOT_INIT;
 
         /* Writing message to unix socket, i.e. upper layer application */
         if ((rc = send(unix_sock, ping, sizeof(struct ping), 0)) < 0) {
                 if (errno == EPIPE)
                         /* Socket not avalible for writing, likely due to a
-                         * connection termination  */
+                           connection termination */
                         return SOCK_CON_TERM;
                 else
                         perror("send_ping");
         }
         return rc;
 }
-

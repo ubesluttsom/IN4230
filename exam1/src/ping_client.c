@@ -10,12 +10,12 @@
 #include "ping.h"
 #include "common.h"
 
-static void client(char* dst_host, char *buf, char *socket_name)
+static void client(char *dst_host, char *buf, char *socket_name)
 {
         int sd;
         int rc;
 
-        struct epoll_event event[1];   /* Only need a single event */
+        struct epoll_event event[1];    /* Only need a single event */
         int epollfd;
 
         struct ping ping;
@@ -76,16 +76,16 @@ static void client(char* dst_host, char *buf, char *socket_name)
 
         /* Calculate time difference. Convert to microseconds */
         time = clock() - time;
-        usec = ((float) time / CLOCKS_PER_SEC) * 1000000;
+        usec = ((float)time / CLOCKS_PER_SEC) * 1000000;
 
         /* TODO: clean up this output */
         printf("<ping_client: pong from %d in %.0fus> %s\n",
-                        ping.addr, usec, ping.msg);
+               ping.addr, usec, ping.msg);
 
         close(sd);
         exit(EXIT_SUCCESS);
 
-close_sock:
+ close_sock:
         close(sd);
         exit(EXIT_FAILURE);
 }
@@ -102,9 +102,9 @@ static void parse_cmd_opts(int argc, char *argv[])
 
         while ((opt = getopt(argc, argv, "h")) != -1) {
                 switch (opt) {
-                        case 'h':
-                                print_usage(argv[0]);
-                                exit(EXIT_SUCCESS);
+                case 'h':
+                        print_usage(argv[0]);
+                        exit(EXIT_SUCCESS);
                 }
         }
 

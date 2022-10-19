@@ -74,7 +74,7 @@ int in_mip_cache(uint8_t mip_addr, struct mip_cache *cache)
 struct mip_msg *send_arp_request(uint8_t mip_addr, struct mip_cache *cache)
 {
         /* The only reason this function returns an alloc'd MIP message is for
-         * debug printing. This is dumb. FIXME! */
+           debug printing. This is dumb. FIXME! */
         int rc;
         uint8_t mip_self = cache->mip;  /* *Current* MIP-address */
         uint8_t dst_addr[] = ETH_BROADCAST;
@@ -173,8 +173,7 @@ int handle_arp_response(struct mip_arp *arp,
 
 int send_arp_response(struct mip_msg *msg,
                       struct mip_cache *cache,
-                      struct ether_frame *frame,
-                      struct sockaddr_ll *so_addr)
+                      struct ether_frame *frame, struct sockaddr_ll *so_addr)
 {
         uint8_t mip_self = cache->mip;  /* *Current* MIP-address */
         struct mip_hdr *hdr = (struct mip_hdr *)&msg->hdr;
@@ -216,8 +215,7 @@ int send_arp_response(struct mip_msg *msg,
 
         if (send_raw_packet(cache->raw_socket,
                             (uint8_t *) msg,
-                            MIP_MSG_LEN,
-                            frame, &cache->addr) == -1) {
+                            MIP_MSG_LEN, frame, &cache->addr) == -1) {
                 perror("send_raw_packet");
                 return -1;
         }

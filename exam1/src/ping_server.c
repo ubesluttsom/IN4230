@@ -8,6 +8,7 @@
 #include "ping.h"
 #include "common.h"
 
+/* Reply to a PING */
 static void pong_ping(int sd, struct ping *ping)
 {
         /* Change a single letter to make "PING" become "PONG". Lol */
@@ -24,7 +25,7 @@ static void pong_ping(int sd, struct ping *ping)
 
 static void server(char *socket_name)
 {
-        struct epoll_event events[MAX_EVENTS];
+        struct epoll_event events[1];
         int sd, epollfd, rc;
 
         struct ping ping;
@@ -45,7 +46,7 @@ static void server(char *socket_name)
                 goto close_sock;
 
         while (1) {
-                rc = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+                rc = epoll_wait(epollfd, events, 1, -1);
                 if (rc == -1) {
                         perror("epoll_wait");
                         goto close_sock;
@@ -57,9 +58,8 @@ static void server(char *socket_name)
                         if (recv_ping(events->data.fd, &ping, PING) < 0)
                                 goto close_sock;
 
-                        /* TODO: clean up this output */
                         printf("<ping_server: ping from %d> %s\n",
-                                        ping.addr, ping.msg);
+                               ping.addr, ping.msg);
 
                         /* Reply to ping with a pong */
                         pong_ping(sd, &ping);
@@ -88,9 +88,9 @@ static void parse_cmd_opts(int argc, char *argv[])
 
         while ((opt = getopt(argc, argv, "h")) != -1) {
                 switch (opt) {
-                        case 'h':
-                                print_usage(argv[0]);
-                                exit(EXIT_SUCCESS);
+                case 'h':
+                        print_usage(argv[0]);
+                        exit(EXIT_SUCCESS);
                 }
         }
 

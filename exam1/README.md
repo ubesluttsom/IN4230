@@ -2,6 +2,7 @@
 title: "`IN4230`: Home exam 1"
 date: "Autumn 2022"
 author: "15605"
+monofont: "Iosevka Fixed"
 ---
 
 > A discussion of how MIP is different than IPv4, and how its performance
@@ -34,6 +35,9 @@ currently in the MIP header, not the ARP SDU).
 
 > A flow chart summarizing the flow of execution on both the client and server
 > side.
+
+I have interpreted "client" and "server" to mean ping client and ping server,
+not sure if this is correct, though.
 
 ```
       PING CLIENT                      PING SERVER

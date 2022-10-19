@@ -18,18 +18,18 @@
 #define SOCK_NOT_INIT -2
 #define SOCK_CON_TERM -3
 
-#include <string.h>       /* strncmp */
-#include <sys/socket.h>   /* recv */
-#include <stdio.h>        /* perror */
-#include <errno.h>        /* errno */
-#include <stdint.h>       /* uint8_t */
+#include <string.h>             /* strncmp */
+#include <sys/socket.h>         /* recv */
+#include <stdio.h>              /* perror */
+#include <errno.h>              /* errno */
+#include <stdint.h>             /* uint8_t */
 
 struct ping {
         uint8_t addr;
-        char    msg[BUF_SIZE];
+        char msg[BUF_SIZE];
 };
 
 int recv_ping(int sd, struct ping *ping, uint8_t type);
 int send_ping(int sd, struct ping *ping);
 
-#endif /* PING_H */
+#endif                          /* PING_H */

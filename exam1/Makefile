@@ -25,7 +25,7 @@ build/%.o: src/%.c $(hdr)
 install:
 	mkdir -p bin && mv -u mip_daemon ping_client ping_server sender bin/
 
-indent: $(src)
+indent: $(src) $(hdr)
 	indent --linux-style --no-tabs --format-all-comments $^
 
 submission: README.md $(src) $(hdr)
