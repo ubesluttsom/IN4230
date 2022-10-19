@@ -4,33 +4,13 @@
 #include "mip_arp.h"
 #include "mip_daemon.h"
 #include "common.h"
+#include "ping.h"
 
 /* Defining some return values */
-#define SOCK_NOT_INIT -2
-#define SOCK_CON_TERM -3
 #define MIP_MSG_TTL_Z -4
 
-int pass_to_application(struct mip_msg *msg, int unix_sock)
-{
-        if (unix_sock < 0)
-                /* If the unix socket, for whatever reason, is not initialized.
-                 * Perhaps there is no connected application above? */
-                return SOCK_NOT_INIT;
-
-        /* Writing message to unix socket, i.e. upper layer application */
-        if (write(unix_sock, msg, MIP_MSG_LEN) < 0) {
-                if (errno == EPIPE)
-                        /* Socket not avalible for writing, likely due to a
-                         * connection termination  */
-                        return SOCK_CON_TERM;
-                else {
-                        perror("write");
-                        return -1;
-                }
-        }
-
-        return 0;
-}
+/* Debug flag. Using global, since it is set once, then never changed. */
+static int d = 0;
 
 int handle_ping_packet(struct mip_msg *msg, int unix_sock,
                        struct mip_cache *cache)
@@ -38,10 +18,21 @@ int handle_ping_packet(struct mip_msg *msg, int unix_sock,
         struct ether_frame ether_hdr;
         uint8_t mip_self = cache->mip;  /* *Current* MIP-address */
         struct mip_cache *ptr;
+        struct ping ping;
 
         if (msg->hdr.dst_addr == mip_self) {
-                /* Ping arrived to recipient (this node) */
-                return pass_to_application(msg, unix_sock);
+                /* Ping arrived to recipient (this node); pass it to app */
+                memset(&ping, '\0', sizeof(struct ping));
+                memcpy(&ping.addr, &msg->hdr.src_addr, sizeof(uint8_t));
+
+                /* Make sure no buffer is overrun */
+                if (msg->hdr.sdu_len*4 > sizeof(ping.msg))
+                        memcpy(&ping.msg, msg->sdu, sizeof(ping.msg));
+                else 
+                        memcpy(&ping.msg, msg->sdu, msg->hdr.sdu_len*4);
+
+                /* Try to send it */
+                return send_ping(unix_sock, &ping);
         }
 
         /* Try to find correct entry in MIP cache */
@@ -51,7 +42,13 @@ int handle_ping_packet(struct mip_msg *msg, int unix_sock,
 
         if (ptr == NULL) {
                 /* If MIP address is *not* in cache. */
-                send_arp_request(msg->hdr.dst_addr, cache);
+                msg = send_arp_request(msg->hdr.dst_addr, cache);
+
+                /* Print sent MIP message */
+                if (d) printf("<mip_daemon: mip arp sent>\n");
+                if (d) debug_print(&ether_hdr, msg, cache);
+
+                free(msg);
                 return MIP_CACHE_MISS;
         }
 
@@ -60,9 +57,8 @@ int handle_ping_packet(struct mip_msg *msg, int unix_sock,
         memcpy(&ether_hdr.src_addr, ptr->addr.sll_addr, ETH_MAC_LEN);
         ether_hdr.eth_proto = htons(ETH_P_MIP);
 
-        /* Update MIP header with sender information (this is unknown to
-         * application above, so must be done here). FIXME: ruins multi-hop */
-        msg->hdr.src_addr = mip_self;
+        /* Decrement TTL before sending */
+        msg->hdr.ttl = msg->hdr.ttl - 1;
 
         /* Send as raw packet */
         send_raw_packet(ptr->raw_socket,
@@ -70,27 +66,23 @@ int handle_ping_packet(struct mip_msg *msg, int unix_sock,
                         MIP_MSG_LEN,
                         &ether_hdr,
                         &ptr->addr);
+
+        /* Print sent MIP message */
+        if (d) printf("<mip_daemon: ping sent>\n");
+        if (d) debug_print(&ether_hdr, msg, cache);
+
         return 0;
 }
 
-int handle_mip_msg(uint8_t * buf,
+int handle_mip_msg(struct mip_msg *msg,
                    int unix_sock,
                    struct mip_cache *cache,
                    struct ether_frame *frame_hdr,
                    struct sockaddr_ll *so_addr)
 {
-
-        struct mip_msg *msg;
-        msg = (struct mip_msg *)buf;
-
-        printf("<Handling MIP message>\n");
-        print_mip_msg(msg, 0);
-
-        /* Drop the package if TTL har expired, else decrement it */
+        /* Drop the package if TTL har expired */
         if (msg->hdr.ttl == 0)
                 return MIP_MSG_TTL_Z;
-        else 
-                msg->hdr.ttl = msg->hdr.ttl - 1;
 
         /* Handle the different types of MIP package */
         switch (msg->hdr.sdu_type) {
@@ -99,43 +91,10 @@ int handle_mip_msg(uint8_t * buf,
         case MIP_T_PING:
                 return handle_ping_packet(msg, unix_sock, cache);
         default:
-                printf("<error: unknown MIP SDU type>\n");
+                if (d) printf("<mip_daemon: error: unknown MIP SDU type>\n");
                 return -1;
         }
 
-}
-
-int recv_mip_packet(int fd, uint8_t *buf)
-{
-        /*
-         * TODO: `buf` should be dynamically allocaded!
-         */
-        int rc;
-        struct mip_msg *msg;
-
-        memset(buf, 0, sizeof(struct mip_msg));   /* Null out the buffer */
-
-        /* First, simply PEEK at the message in the buffer. This is to get the
-         * actual length of the entire message from the header. */
-        rc = recv(fd, buf, sizeof(struct mip_msg), MSG_PEEK);
-        if (rc < 0)
-                goto return_error;
-
-        /* We assume the message is a MIP message, and we can address it as
-         * such. FIXME: Should use propper de-serialization instead of cast! */
-        msg = (struct mip_msg *)buf;
-
-        /* Since we know know how long the payload is (the SDU), we can now
-         * read the entire message for real */
-        rc = recv(fd, msg, MIP_MSG_LEN, 0);
-        if (rc < 0)
-                goto return_error;
-
-        return rc;
-
-return_error:
-        perror("recv_mip_packet");
-        return rc;
 }
 
 int init_epoll_table(int unix_sock, int raw_sock)
@@ -163,12 +122,12 @@ close_socks:
         exit(EXIT_FAILURE);
 }
 
-void print_usage(char *cmd)
+static void print_usage(char *cmd)
 {
         printf("usage: %s [-h] [-d] <socket_upper> <MIP address>\n", cmd);
 }
 
-void parse_cmd_opts(int argc, char *argv[])
+static void parse_cmd_opts(int argc, char *argv[])
 {
         int opt;
 
@@ -179,7 +138,8 @@ void parse_cmd_opts(int argc, char *argv[])
                                 exit(EXIT_SUCCESS);
 
                         case 'd':
-                                /* TODO: Do something! */
+                                /* Global debug flag */
+                                d = 1;
                                 continue;
                 }
         }
@@ -198,25 +158,163 @@ void add_to_queue(struct mip_pkt_queue *queue, struct mip_msg *msg)
         memcpy(queue->next->msg, msg, MIP_MSG_LEN);
 }
 
-void mip_daemon(struct mip_cache *cache,
-                int epollfd, int unix_sock, int raw_sock)
+void process_queue(struct mip_pkt_queue *queue, struct mip_cache *cache)
 {
+        struct mip_pkt_queue *ptr_prev;
+        struct mip_pkt_queue *ptr;
+
+        if (queue->next == NULL)
+                return;
+
+        ptr_prev = queue;
+        ptr = queue->next;
+
+        for (; ptr != NULL; ptr = ptr->next) {
+
+                /* Check if we can send a packet */
+                /* TODO: Do something with the NULLed out variables */
+                if ((handle_mip_msg(ptr->msg, 0, cache, NULL, NULL))
+                                != MIP_CACHE_MISS) {
+
+                        /* Remove entry frome packet queue */
+                        ptr_prev->next = (ptr->next == NULL)? NULL : ptr->next;
+                        free(ptr->msg);
+                        free(ptr);
+                        ptr = ptr_prev;
+                }
+
+                ptr_prev = ptr;
+        }
+}
+
+void handle_application(int epollfd,
+                        int *app_sd,
+                        struct epoll_event events[],
+                        struct mip_cache *cache,
+                        struct mip_pkt_queue *queue)
+{
+        int rc;
+        struct mip_msg *msg;
+        struct ping ping;
+
+        /* Try to read from the application */
+        if ((rc = recv_ping(events->data.fd, &ping, PING | PONG)) == 0)
+                /* No bytes read. Connection terminated */
+                goto epoll_del;
+
+        if (rc < 0)
+                return;
+
+        /* Use buffer received from app to make a MIP packet */
+        msg = construct_mip_ping(cache->mip, ping.addr, (uint8_t *)ping.msg);
+
+        /* Process MIP packet */
+        if ((handle_mip_msg(msg, events->data.fd, cache, NULL, NULL))
+                        == MIP_CACHE_MISS)
+                /* If recipient MAC is unknown, add to queue, to be process
+                 * after replies from ARP. */
+                add_to_queue(queue, msg);
+
+        /* Free MIP message */
+        free(msg);
+
+        /* “Rearm” epoll file descriptor, delete it if this fails */
+        if (epoll_ctl_mod(epollfd, EPOLLIN | EPOLLONESHOT, events->data.fd) < 0)
+                goto epoll_del;
+        else
+                return;
+
+epoll_del:
+        epoll_ctl_del(epollfd, events->data.fd);
+        *app_sd = -1;
+}
+
+int handle_raw_sock(int epollfd, int raw_sock, int *app_sd,
+                     struct mip_cache *cache)
+{
+
         int err;   /* Store error return values */
         struct sockaddr_ll so_addr;   /* Address storage */
         struct ether_frame frame_hdr;   /* Ethernet frame storage */
+        struct mip_msg *msg;   /* Temporary MIP message pointer */
 
+        msg = recv_raw_packet(raw_sock, &frame_hdr, &so_addr);
+        if (msg == NULL)
+                return -1;
+
+        if (frame_hdr.eth_proto != htons(ETH_P_MIP)) {
+                if (d) printf("<mip_daemon: unknown ethernet protocol>\n");
+                return -1;
+        }
+
+        /* Print recvieved MIP message (cache is printed *before* update) */
+        if (d) printf("<mip_daemon: mip received>\n");
+        if (d) debug_print(&frame_hdr, msg, cache);
+
+        err = handle_mip_msg(msg, *app_sd, cache, &frame_hdr, &so_addr);
+
+        free(msg);
+
+        if (err < 0) {
+                switch (err) {
+                case SOCK_CON_TERM:
+                        /* If the socket connection is terminated, delete it
+                         * from the epoll list */
+                        epoll_ctl_del(epollfd, *app_sd);
+                        *app_sd = -1;
+                        break;
+                case MIP_MSG_TTL_Z:
+                case SOCK_NOT_INIT:
+                case MIP_CACHE_MISS:
+                        /* TODO: should I handle MIP cache miss here? Now it
+                         * just drops the package. Handling MIP cache miss
+                         * would imply asking other nodes, making multiple hops
+                         * */
+                        break;
+                }
+                return -1;
+        }
+        return 0;
+}
+
+
+int handle_new_connection(int epollfd, int unix_sock)
+{
+        int app_sd;
+
+        app_sd = accept(unix_sock, NULL, NULL);
+        if (app_sd < 0) {
+                perror("accept");
+                return -1;
+        }
+
+        if (epoll_ctl_add(epollfd,  EPOLLIN | EPOLLONESHOT, app_sd) < 0) {
+                /* TODO: Fancier error handling? */
+                close(app_sd);
+                return -1;
+        }
+
+        if (d) printf("<mip_daemon: application connected>\n");
+
+        return app_sd;
+}
+
+void mip_daemon(struct mip_cache *cache,
+                int epollfd, int unix_sock, int raw_sock)
+{
         struct epoll_event events[MAX_EVENTS];   /* Storage of epoll table */
 
-        int app_sd;   /* Temp. socket for connecting applications. FIXME:
-                         potentially used uninitialized; only one app at a
-                         time; should multiplex? */
+        int app_sd;   /* Temp. socket for connecting applications. FIXME: only
+                         one app at a time; should multiplex? */
 
-        uint8_t buf[BUF_SIZE];   /* Buffer for storing messages. FIXME: should
-                                    a pointer and be dynamically allocated */
-
+        /* Queue for storing packages waiting to be processed. They get added
+         * after MIP-ARP cache misses */
         struct mip_pkt_queue queue;
-        bzero(&queue, sizeof(struct mip_pkt_queue));
+        memset(&queue, '\0', sizeof(struct mip_pkt_queue));
 
+        app_sd = -1;
+
+        /* Main program loop */
         while (1) {
 
                 /* Wait for something to happen on any socket */
@@ -225,95 +323,22 @@ void mip_daemon(struct mip_cache *cache,
                         goto close_socks;
                 }
 
+                /* Handle incoming application connection */
                 if (events->data.fd == unix_sock) {
+                        app_sd = handle_new_connection(epollfd, unix_sock);
 
-                        /* Handle incoming application connection */
-                        printf("<New application trying to connect ... >\n");
-                        app_sd = accept(unix_sock, NULL, NULL);
-                        if (app_sd == -1) {
-                                perror("accept");
-                                continue;
-                        }
-
-                        if (epoll_ctl_add(epollfd,  EPOLLIN | EPOLLONESHOT, app_sd) == -1)
-                                /* TODO: Fancier error handling? */
-                                continue;
-
-                        printf("<Application connected>\n");
-
+                /* Receive data from raw socket */
                 } else if (events->data.fd == raw_sock) {
-
-                        /* Receive data from raw socket */
-                        if (recv_raw_packet(raw_sock, buf, BUF_SIZE,
-                                                &frame_hdr, &so_addr) < 1) {
-                                perror("recv");
+                        if (handle_raw_sock(epollfd, raw_sock, 
+                                            &app_sd, cache) < 0)
                                 continue;
-                        }
+                        /* Try to send packets in the queue after recieving raw
+                         * packets, since they might have updated the cache */
+                        process_queue(&queue, cache);
 
-                        if (frame_hdr.eth_proto != htons(ETH_P_MIP))
-                                printf("<unknown ethernet protocol>\n");
-
-                        if ((err = handle_mip_msg(buf, app_sd, cache,
-                                                &frame_hdr, &so_addr)) < 0) {
-                                switch (err) {
-                                case SOCK_CON_TERM:
-                                        epoll_ctl_del(epollfd, app_sd);
-                                        app_sd = -1;
-                                        continue;
-                                case MIP_MSG_TTL_Z:
-                                case SOCK_NOT_INIT:
-                                case MIP_CACHE_MISS:
-                                        /* TODO: should I handle MIP cache miss
-                                         * here? Now it just drops the package.
-                                         * Handling MIP cache miss would imply
-                                         * asking other nodes, making multiple
-                                         * hops */
-                                        continue;
-                                }
-                        }
-
+                /* Application is trying to send data */
                 } else {
-                        /* Application is trying to send data */
-                        printf("<Recived data from application>\n");
-
-                        if (recv_mip_packet(events->data.fd, buf) == 0) {
-                                /* No bytes read. Connection terminated */
-                                epoll_ctl_del(epollfd, events->data.fd);
-                                continue;
-                        };
-
-                        if ((handle_mip_msg(buf, events->data.fd, cache,
-                                            NULL, NULL)) == MIP_CACHE_MISS) {
-                                add_to_queue(&queue, (struct mip_msg *)buf);
-                        }
-                        /* FIXME: Skaper masse rot! */
-                        epoll_ctl_mod(epollfd, EPOLLIN | EPOLLONESHOT, events->data.fd);
-                        continue;
-                }
-
-                /* Try to send packets in the queue. TODO: factor out as
-                 * seperate function */
-
-                if (queue.next == NULL)
-                        continue;
-
-                struct mip_pkt_queue *ptr_prev = &queue;
-                struct mip_pkt_queue *ptr = queue.next;
-                for (; ptr != NULL; ptr = ptr->next) {
-
-                        /* Check if we can send a packet */
-                        /* TODO: Do something with the NULLed out variables */
-                        if ((handle_mip_msg((uint8_t *)ptr->msg, 0, cache, NULL, NULL))
-                             != MIP_CACHE_MISS) {
-
-                                /* Remove entry frome packet queue */
-                                ptr_prev->next = (ptr->next == NULL)? NULL : ptr->next;
-                                free(ptr->msg);
-                                free(ptr);
-                                ptr = ptr_prev;
-                        }
-
-                        ptr_prev = ptr;
+                        handle_application(epollfd, &app_sd, events, cache, &queue);
                 }
         }
 
@@ -333,6 +358,8 @@ int main(int argc, char *argv[])
         uint8_t mip_addr;       /* MIP address of *this* node */
         char *unix_sock_str;   /* Path to unix socket */
 
+        struct mip_cache cache; /* List of all network interfaces */
+
         /* Parse command line options and arguments */
         parse_cmd_opts(argc, argv);
         mip_addr = atoi(argv[argc - 1]);
@@ -349,7 +376,6 @@ int main(int argc, char *argv[])
         epollfd = init_epoll_table(unix_sock, raw_sock);
 
         /* Initialize the MIP-ARP cache */
-        struct mip_cache cache; /* List of all network interfaces */
         init_mip_cache(mip_addr, &cache, raw_sock);
 
         /* Run the main program loop */

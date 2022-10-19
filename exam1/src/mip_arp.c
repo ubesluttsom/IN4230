@@ -68,15 +68,13 @@ int in_mip_cache(uint8_t mip_addr, struct mip_cache *cache)
                         return 1;
                 cache = cache->next;
         }
-        printf("<info: MIP address not in cache>\n");
         return 0;
 }
 
-int send_arp_request(uint8_t mip_addr, struct mip_cache *cache)
+struct mip_msg *send_arp_request(uint8_t mip_addr, struct mip_cache *cache)
 {
-        /* 
-         * TODO: Function is untested!
-         */
+        /* The only reason this function returns an alloc'd MIP message is for
+         * debug printing. This is dumb. FIXME! */
         int rc;
         uint8_t mip_self = cache->mip;  /* *Current* MIP-address */
         uint8_t dst_addr[] = ETH_BROADCAST;
@@ -93,7 +91,7 @@ int send_arp_request(uint8_t mip_addr, struct mip_cache *cache)
         hdr->dst_addr = MIP_BROADCAST;
         hdr->src_addr = mip_self;
         hdr->ttl = 1;           /* FIXME: remove hardcoded */
-        hdr->sdu_len = sizeof(struct mip_arp) / 4;
+        hdr->sdu_len = (sizeof(struct mip_arp) + (4 - 1)) / 4;
         hdr->sdu_type = MIP_T_ARP;
         msg->hdr = *hdr;
 
@@ -114,9 +112,7 @@ int send_arp_request(uint8_t mip_addr, struct mip_cache *cache)
                 }
         }
 
-        free(msg);
-
-        return rc;
+        return msg;
 }
 
 int handle_arp_packet(struct mip_msg *msg,
@@ -126,11 +122,6 @@ int handle_arp_packet(struct mip_msg *msg,
 {
         struct mip_arp *arp = (struct mip_arp *)msg->sdu;
 
-        /* TODO: Fix debug print */
-        printf("<ARP packet from ");
-        print_mac_addr(frame_hdr->src_addr, 6);
-        printf(" for MIP address %d>\n", (uint8_t) arp->addr);
-
         switch (arp->type) {
         case MIP_ARP_RES:
 
@@ -139,8 +130,7 @@ int handle_arp_packet(struct mip_msg *msg,
         case MIP_ARP_REQ:
 
                 if (msg->hdr.dst_addr != MIP_BROADCAST) {
-                        printf
-                            ("<error: MIP header dst.address not broadcast>\n");
+                        /* Drop MIP ARP packet if address isn't broadcast */
                         return -1;
                 }
 
@@ -149,8 +139,7 @@ int handle_arp_packet(struct mip_msg *msg,
                         return send_arp_response(msg, cache,
                                                  frame_hdr, so_addr);
                 else
-                        return MIP_CACHE_MISS;  /* TODO: If the requested MIP
-                                                   address is *not* in cache */
+                        return MIP_CACHE_MISS;
         }
 
         return -1;
@@ -170,7 +159,7 @@ int handle_arp_response(struct mip_arp *arp,
                 cache = cache->next;
         }
         if (cache == NULL) {
-                printf("<error: interface not in cache>\n");
+                printf("<mip_arp error: interface not in cache>\n");
                 return -1;
         }
         /* >>> */
@@ -179,10 +168,6 @@ int handle_arp_response(struct mip_arp *arp,
         cache->mip = arp->addr;
         memcpy(cache->mac, &so_addr->sll_addr, ETH_MAC_LEN);
 
-        /* TODO: Fix debug print */
-        printf("<updated MIP cache: %d --> ", cache->mip);
-        print_mac_addr(cache->mac, 6);
-        printf(">\n");
         return 1;
 }
 
@@ -202,8 +187,9 @@ int send_arp_response(struct mip_msg *msg,
                         break;
                 cache = cache->next;
         }
+
         if (cache == NULL) {
-                printf("<Error: interface not in cache>\n");
+                printf("<mip_arp error: interface not in cache>\n");
                 return -1;
         }
 
@@ -220,7 +206,7 @@ int send_arp_response(struct mip_msg *msg,
         hdr->dst_addr = hdr->src_addr;
         hdr->src_addr = mip_self;
         hdr->ttl = 1;           /* FIXME: remove hardcoded */
-        hdr->sdu_len = sizeof(struct mip_arp) / 4;
+        hdr->sdu_len = (sizeof(struct mip_arp) + (4 - 1)) / 4;
         hdr->sdu_type = MIP_T_ARP;
         msg->hdr = *hdr;
 
@@ -230,15 +216,11 @@ int send_arp_response(struct mip_msg *msg,
 
         if (send_raw_packet(cache->raw_socket,
                             (uint8_t *) msg,
-                            sizeof(hdr) + hdr->sdu_len * 4,
+                            MIP_MSG_LEN,
                             frame, &cache->addr) == -1) {
                 perror("send_raw_packet");
                 return -1;
         }
-
-        printf("<responded to ARP from ");
-        print_mac_addr(frame->dst_addr, 6);
-        printf(">\n");
 
         return 1;
 }

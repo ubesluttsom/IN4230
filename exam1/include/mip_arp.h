@@ -1,8 +1,3 @@
-/*
- * Check https://valecs.gitlab.io/resources/CHeaderFileGuidelines.pdf for some
- * more nice practises.
- */
-
 #ifndef _MIP_ARP_H
 #define _MIP_ARP_H
 
@@ -36,6 +31,6 @@ int in_mip_cache(uint8_t, struct mip_cache *);
 int handle_arp_packet(struct mip_msg *, struct mip_cache *, struct ether_frame *, struct sockaddr_ll *);
 int handle_arp_response(struct mip_arp *, struct mip_cache *, struct sockaddr_ll *);
 int send_arp_response(struct mip_msg *, struct mip_cache *, struct ether_frame *, struct sockaddr_ll *);
-int send_arp_request(uint8_t, struct mip_cache *);
+struct mip_msg *send_arp_request(uint8_t, struct mip_cache *);
 
 #endif /* _MIP_ARP_H */

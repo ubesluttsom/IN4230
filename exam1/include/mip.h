@@ -42,8 +42,8 @@
 // MIP Header
 
 struct mip_hdr {
-  uint8_t  dst_addr : 8;
-  uint8_t  src_addr : 8;
+  uint8_t  dst_addr;
+  uint8_t  src_addr;
   uint16_t ttl      : 4,
            sdu_len  : 9,
            sdu_type : 3;
